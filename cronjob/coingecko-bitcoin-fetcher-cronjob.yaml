@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: coingecko-bitcoin-fetcher
+spec:
+  schedule: "*/30 * * * *"  # Runs every 30 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: coingecko-fetcher
+            image: curlimages/curl:latest  # A minimal image with curl installed
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Fetch Bitcoin data from CoinGecko API
+              RESPONSE=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd")
+              
+              # Print the API response for debugging
+              echo "API Response: $RESPONSE"
+
+              # Check if the API response contains "bitcoin"
+              if echo "$RESPONSE" | grep -q '"bitcoin"'; then
+                echo "Bitcoin data fetched successfully."
+              else
+                echo "Error fetching Bitcoin data. Exiting..."
+                exit 1
+              fi
+
+              # Store the response in a temporary file
+              echo "$RESPONSE" > /tmp/bitcoin_data.json
+
+              # Create or update the ConfigMap with the fetched data
+              kubectl create configmap bitcoin-data --from-file=/tmp/bitcoin_data.json --dry-run=client -o yaml | kubectl apply -f -
+            volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+          restartPolicy: OnFailure
+          volumes:
+          - name: tmp-volume
+            emptyDir: {}
